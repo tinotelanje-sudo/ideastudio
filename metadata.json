@@ -1,0 +1,7 @@
+{
+  "name": "IDEAI STUDIOS ULTRA",
+  "description": "IDEAI STUDIOS ULTRA is a professional-grade web IDE for Arduino and multi-hardware development with advanced AI integration, WebUSB support, and ultra-realistic UI. (CREATED BY RAZIF). Optimized for Bliss OS and high-performance development.",
+  "requestFramePermissions": [
+    "usb"
+  ]
+}
