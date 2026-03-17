@@ -56,6 +56,15 @@ body {
 }
 
 /* Animations */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
 @keyframes pulse-glow {
   0% { box-shadow: 0 0 0 0 var(--accent-glow); }
   70% { box-shadow: 0 0 0 10px rgba(0, 122, 204, 0); }
@@ -82,4 +91,44 @@ body {
   opacity: 0.5;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* Debugger Styles */
+.debug-breakpoint {
+  background: #f48771;
+  width: 10px !important;
+  height: 10px !important;
+  left: 5px;
+  top: 5px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.debug-breakpoint-disabled {
+  background: transparent;
+  border: 2px solid #f48771;
+  width: 10px !important;
+  height: 10px !important;
+  left: 5px;
+  top: 5px;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.5;
+}
+
+.debug-current-line {
+  background: rgba(255, 255, 0, 0.1);
+  border-top: 1px solid rgba(255, 255, 0, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 0, 0.2);
+}
+
+.debug-current-line-glyph {
+  background: #ffcc00;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 8px solid #ffcc00;
+  left: 8px;
+  top: 5px;
 }

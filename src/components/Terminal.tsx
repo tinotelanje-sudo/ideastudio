@@ -11,6 +11,7 @@ interface TerminalComponentProps {
 export const TerminalComponent = ({ onCommand, logs = [] }: TerminalComponentProps) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
+  const rafRef = useRef<number | null>(null);
   const currentLine = useRef<string>('');
   const lastLogIndex = useRef<number>(0);
 
@@ -45,34 +46,55 @@ export const TerminalComponent = ({ onCommand, logs = [] }: TerminalComponentPro
 
     const tryFit = () => {
       // Basic guards: terminal must be opened and container must be visible
-      if (!term.element || !terminalRef.current) return;
+      if (!term || !term.element || !terminalRef.current) return;
       
-      // Check if the terminal is actually in the document
+      // Check if the terminal is actually in the document and has a parent
       if (!term.element.ownerDocument.contains(term.element)) return;
+      if (!term.element.parentElement) return;
 
       // Check if container has dimensions
       const { offsetWidth, offsetHeight } = terminalRef.current;
-      if (offsetWidth === 0 || offsetHeight === 0) return;
+      if (offsetWidth <= 0 || offsetHeight <= 0) return;
 
       // Deep check for xterm internal state to avoid "dimensions" error
+      // We use a very defensive approach here because xterm-addon-fit 
+      // accesses private internal properties that might be missing during 
+      // rapid layout changes or after disposal.
       const core = (term as any)._core;
-      if (!core || !core._renderService || !core._renderService.dimensions) return;
+      if (!core) return;
+
+      // In some versions it might be _renderService, in others renderer
+      const renderService = core._renderService || core.renderer;
+      if (!renderService) return;
+
+      // Check for dimensions property specifically
+      if (!renderService.dimensions) return;
+
+      // Ensure dimensions are valid and have non-zero values
+      const dims = renderService.dimensions;
+      if (!dims.actualCellWidth || !dims.actualCellHeight) return;
 
       try {
         // xterm-addon-fit can throw if internal state is inconsistent
         fitAddon.fit();
       } catch (e) {
         // Ignore internal xterm errors during layout transitions
+        console.warn('Terminal fit failed:', e);
       }
     };
 
     // Use ResizeObserver to handle container size changes (including sidebar toggles)
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries.length) return;
+      
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+
       // Use requestAnimationFrame to avoid "ResizeObserver loop limit exceeded"
       // and ensure we fit during the next paint cycle
-      requestAnimationFrame(() => {
-        if (xtermRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        if (xtermRef.current && xtermRef.current === term) {
           tryFit();
         }
       });
@@ -112,8 +134,12 @@ export const TerminalComponent = ({ onCommand, logs = [] }: TerminalComponentPro
     });
 
     return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
       clearTimeout(initialFitTimeout);
       resizeObserver.disconnect();
+      xtermRef.current = null;
       term.dispose();
     };
   }, []);

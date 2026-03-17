@@ -25,17 +25,54 @@ db.exec(`
   );
 `);
 
-// Seed some initial data if empty
-const rowCount = db.prepare('SELECT count(*) as count FROM knowledge').get() as { count: number };
-if (rowCount.count === 0) {
-  const insertKnowledge = db.prepare('INSERT INTO knowledge (keyword, response, category) VALUES (?, ?, ?)');
-  insertKnowledge.run('blink', 'To blink an LED, you need to set the pin mode to OUTPUT in setup() and then toggle the pin HIGH and LOW with a delay in loop().', 'arduino');
-  insertKnowledge.run('serial', 'Use Serial.begin(9600) to start serial communication. Use Serial.println() to send data to the computer.', 'arduino');
-  insertKnowledge.run('esp32', 'The ESP32 is a powerful microcontroller with integrated WiFi and Bluetooth. It has more GPIOs and faster clock speed than Arduino Uno.', 'hardware');
-  
-  const insertSnippet = db.prepare('INSERT INTO code_snippets (trigger, code, language) VALUES (?, ?, ?)');
-  insertSnippet.run('blink', 'void setup() {\n  pinMode(LED_BUILTIN, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(LED_BUILTIN, HIGH);\n  delay(1000);\n  digitalWrite(LED_BUILTIN, LOW);\n  delay(1000);\n}', 'cpp');
-  insertSnippet.run('wifi', '#include <WiFi.h>\n\nconst char* ssid = "YOUR_SSID";\nconst char* password = "YOUR_PASSWORD";\n\nvoid setup() {\n  Serial.begin(115200);\n  WiFi.begin(ssid, password);\n  while (WiFi.status() != WL_CONNECTED) {\n    delay(500);\n    Serial.print(".");\n  }\n  Serial.println("WiFi connected");\n}', 'cpp');
+// Seed initial data
+const insertKnowledge = db.prepare('INSERT OR IGNORE INTO knowledge (keyword, response, category) VALUES (?, ?, ?)');
+const seedKnowledge = [
+  ['blink', 'To blink an LED, you need to set the pin mode to OUTPUT in setup() and then toggle the pin HIGH and LOW with a delay in loop().', 'arduino'],
+  ['serial', 'Use Serial.begin(9600) to start serial communication. Use Serial.println() to send data to the computer.', 'arduino'],
+  ['esp32', 'The ESP32 is a powerful microcontroller with integrated WiFi and Bluetooth. It has more GPIOs and faster clock speed than Arduino Uno.', 'hardware'],
+  ['pinmode', 'Configures the specified pin to behave either as an input or an output. Usage: pinMode(pin, mode);', 'arduino'],
+  ['digitalwrite', 'Write a HIGH or a LOW value to a digital pin. Usage: digitalWrite(pin, value);', 'arduino'],
+  ['analogread', 'Reads the value from the specified analog pin. Arduino boards contain a multi-channel, 10-bit analog to digital converter.', 'arduino'],
+  ['millis', 'Returns the number of milliseconds passed since the Arduino board began running the current program.', 'arduino'],
+  ['interrupt', 'Interrupts are useful for making things happen automatically in microcontroller programs and can help solve timing problems.', 'arduino'],
+  ['deep sleep', 'ESP32 Deep Sleep is a power-saving mode where the CPU and most peripherals are powered off. Only the RTC remains active.', 'esp32'],
+  ['watchdog', 'A Watchdog Timer (WDT) is a hardware timer that automatically generates a system reset if the main program neglects to periodically service it.', 'error'],
+  ['brownout', 'A brownout detector triggers a reset when the supply voltage drops below a certain threshold to prevent unpredictable behavior.', 'error'],
+  ['i2c', 'I2C (Inter-Integrated Circuit) is a synchronous, multi-master, multi-slave, packet switched, single-ended, serial communication bus.', 'communication'],
+  ['spi', 'Serial Peripheral Interface (SPI) is a synchronous serial communication interface used for short-distance communication, primarily in embedded systems.', 'communication'],
+  ['freertos', 'FreeRTOS is a real-time operating system for microcontrollers. ESP32 uses it for dual-core task management.', 'esp32'],
+  ['stack overflow', 'A stack overflow occurs when a program uses more stack memory than allocated, often due to deep recursion or large local variables.', 'error'],
+  ['pwm', 'Pulse Width Modulation (PWM) is a technique for getting analog results with digital means. Digital control is used to create a square wave.', 'arduino'],
+  ['eeprom', 'EEPROM is memory whose values are kept when the board is powered off. It has a limited number of write cycles.', 'arduino'],
+  ['ota', 'Over-the-Air (OTA) update is the process of loading firmware to a microcontroller using WiFi instead of a serial port.', 'esp32'],
+  ['adc', 'Analog-to-Digital Converter (ADC) converts an analog voltage to a digital number. ESP32 has two 12-bit SAR ADCs.', 'hardware'],
+  ['dac', 'Digital-to-Analog Converter (DAC) converts a digital number to an analog voltage. ESP32 has two 8-bit DAC channels.', 'hardware']
+];
+
+for (const [keyword, response, category] of seedKnowledge) {
+  insertKnowledge.run(keyword, response, category);
+}
+
+const insertSnippet = db.prepare('INSERT OR IGNORE INTO code_snippets (trigger, code, language) VALUES (?, ?, ?)');
+const seedSnippets = [
+  ['blink', 'void setup() {\n  pinMode(LED_BUILTIN, OUTPUT);\n}\n\nvoid loop() {\n  digitalWrite(LED_BUILTIN, HIGH);\n  delay(1000);\n  digitalWrite(LED_BUILTIN, LOW);\n  delay(1000);\n}', 'cpp'],
+  ['wifi', '#include <WiFi.h>\n\nconst char* ssid = "YOUR_SSID";\nconst char* password = "YOUR_PASSWORD";\n\nvoid setup() {\n  Serial.begin(115200);\n  WiFi.begin(ssid, password);\n  while (WiFi.status() != WL_CONNECTED) {\n    delay(500);\n    Serial.print(".");\n  }\n  Serial.println("WiFi connected");\n}', 'cpp'],
+  ['pinmode', 'pinMode(${1:pin}, ${2:OUTPUT});', 'cpp'],
+  ['digitalwrite', 'digitalWrite(${1:pin}, ${2:HIGH});', 'cpp'],
+  ['analogread', 'int val = analogRead(${1:A0});', 'cpp'],
+  ['millis', 'unsigned long currentMillis = millis();', 'cpp'],
+  ['interrupt', 'attachInterrupt(digitalPinToInterrupt(${1:pin}), ${2:ISR}, ${3:CHANGE});', 'cpp'],
+  ['deepsleep', 'esp_sleep_enable_timer_wakeup(${1:TIME_IN_US});\nesp_deep_sleep_start();', 'cpp'],
+  ['i2c', '#include <Wire.h>\n\nvoid setup() {\n  Wire.begin();\n}', 'cpp'],
+  ['spi', '#include <SPI.h>\n\nvoid setup() {\n  SPI.begin();\n}', 'cpp'],
+  ['pwm', 'analogWrite(${1:pin}, ${2:value});', 'cpp'],
+  ['eeprom', '#include <EEPROM.h>\n\nvoid setup() {\n  EEPROM.begin(${1:512});\n}', 'cpp'],
+  ['ota', '#include <ArduinoOTA.h>\n\nvoid setup() {\n  ArduinoOTA.begin();\n}\n\nvoid loop() {\n  ArduinoOTA.handle();\n}', 'cpp']
+];
+
+for (const [trigger, code, language] of seedSnippets) {
+  insertSnippet.run(trigger, code, language);
 }
 
 export const queryOfflineAi = (prompt: string) => {
@@ -69,12 +106,13 @@ export const getOfflineCompletions = (prefix: string) => {
   const lowerPrefix = prefix.toLowerCase();
   
   // Find matching keywords or triggers
-  const keywords = db.prepare("SELECT keyword as label, response as detail FROM knowledge WHERE keyword LIKE ? || '%' LIMIT 5").all(lowerPrefix) as { label: string, detail: string }[];
-  const snippets = db.prepare("SELECT trigger as label, code as detail FROM code_snippets WHERE trigger LIKE ? || '%' LIMIT 5").all(lowerPrefix) as { label: string, detail: string }[];
+  const keywords = db.prepare("SELECT keyword as label, response as detail, 'keyword' as type FROM knowledge WHERE keyword LIKE ? || '%' LIMIT 5").all(lowerPrefix) as { label: string, detail: string, type: string }[];
+  const snippets = db.prepare("SELECT trigger as label, code as detail, 'snippet' as type FROM code_snippets WHERE trigger LIKE ? || '%' LIMIT 5").all(lowerPrefix) as { label: string, detail: string, type: string }[];
   
   return [...keywords, ...snippets].map(item => ({
     label: item.label,
-    detail: item.detail.substring(0, 50) + '...',
-    insertText: item.detail.includes('\n') ? item.detail : item.label
+    detail: item.detail.substring(0, 50) + (item.detail.length > 50 ? '...' : ''),
+    insertText: item.type === 'snippet' ? item.detail : item.label,
+    type: item.type
   }));
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Play, 
   Save, 
@@ -12,6 +12,7 @@ import {
   Search,
   FolderOpen,
   FileCode,
+  GitBranch,
   ChevronRight,
   ChevronDown,
   X,
@@ -25,7 +26,14 @@ import {
   CloudUpload,
   Activity,
   ShieldCheck,
-  Globe
+  Globe,
+  Bug,
+  Pause,
+  SkipForward,
+  ArrowDown,
+  ArrowUp,
+  Square,
+  Smartphone
 } from 'lucide-react';
 import { TerminalComponent } from './components/Terminal';
 import { DeviceInfoPanel } from './components/DeviceInfoPanel';
@@ -33,7 +41,11 @@ import { LinuxSetup } from './components/LinuxSetup';
 import { ExtensionsManager } from './components/ExtensionsManager';
 import { BoardsManager } from './components/BoardsManager';
 import { SystemStatusPanel } from './components/SystemStatusPanel';
-import { generateArduinoCode } from './services/aiService';
+import { BuildStatusOverlay } from './components/BuildStatusOverlay';
+import { DebuggerPanel } from './components/DebuggerPanel';
+import { GitPanel } from './components/GitPanel';
+import { AndroidEmulator } from './components/AndroidEmulator';
+import { generateCode, CodeGenerationParams } from './services/aiService';
 import { queryOfflineAi } from './services/offlineAiService';
 import { getAiCompletions } from './services/completionService';
 import { clsx, type ClassValue } from 'clsx';
@@ -62,16 +74,158 @@ void loop() {
   const [isCompiling, setIsCompiling] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [buildProgress, setBuildProgress] = useState(0);
+  const [buildStatus, setBuildStatus] = useState('');
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState('cpp');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-pro-preview');
+  const [optimizationLevel, setOptimizationLevel] = useState<'none' | 'balanced' | 'size' | 'speed'>('balanced');
+  const [targetHardware, setTargetHardware] = useState('Arduino Uno');
+  const [targetBoardVariant, setTargetBoardVariant] = useState('');
+  const [selectedLibraries, setSelectedLibraries] = useState<string[]>([]);
+  const [showAdvancedAi, setShowAdvancedAi] = useState(false);
   const [connectedDevice, setConnectedDevice] = useState<USBDevice | null>(null);
   const [activeTab, setActiveTab] = useState('Blink.ino');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarView, setSidebarView] = useState<'explorer' | 'library' | 'device' | 'linux' | 'extensions' | 'boards' | 'status'>('explorer');
+  const [sidebarView, setSidebarView] = useState<'explorer' | 'library' | 'device' | 'linux' | 'extensions' | 'boards' | 'status' | 'debug' | 'git' | 'android'>('explorer');
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployStatus, setDeployStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
 
-  // WebUSB Detection
+  // Debugger State
+  const [isDebugging, setIsDebugging] = useState(false);
+  const [breakpoints, setBreakpoints] = useState<{ id: string; line: number; enabled: boolean }[]>([]);
+  const [debugVariables, setDebugVariables] = useState<{ name: string; value: string; type: string }[]>([]);
+  const [debugCallStack, setDebugCallStack] = useState<string[]>([]);
+  const [currentDebugLine, setCurrentDebugLine] = useState<number | null>(null);
+  const editorRef = React.useRef<any>(null);
+  const monacoRef = React.useRef<any>(null);
+  const decorationsRef = React.useRef<string[]>([]);
+
+  const handleEditorMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+
+    // Add breakpoint clicking support
+    editor.onMouseDown((e: any) => {
+      if (e.target.type === 2) { // Gutter margin
+        const line = e.target.position.lineNumber;
+        toggleBreakpoint(line);
+      }
+    });
+
+    // Register AI Completion Provider
+    monaco.languages.registerCompletionItemProvider('cpp', {
+      provideCompletionItems: async (model: any, position: any) => {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        const prefix = word.word;
+        if (prefix.length < 2) return { suggestions: [] };
+
+        const aiSuggestions = await getAiCompletions(prefix);
+
+        const suggestions = aiSuggestions.map((item: any) => ({
+          label: item.label,
+          kind: monaco.languages.CompletionItemKind.Function,
+          documentation: item.detail,
+          insertText: item.insertText,
+          range: range,
+        }));
+
+        return { suggestions };
+      },
+    });
+  };
+
+  const toggleBreakpoint = (line: number) => {
+    setBreakpoints(prev => {
+      const existing = prev.find(b => b.line === line);
+      if (existing) {
+        return prev.filter(b => b.line !== line);
+      }
+      return [...prev, { id: Math.random().toString(36).substr(2, 9), line, enabled: true }];
+    });
+  };
+
+  useEffect(() => {
+    if (!editorRef.current || !monacoRef.current) return;
+
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+
+    const decorations: any[] = [];
+
+    // Add breakpoint decorations
+    breakpoints.forEach(bp => {
+      decorations.push({
+        range: new monaco.Range(bp.line, 1, bp.line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: bp.enabled ? 'debug-breakpoint' : 'debug-breakpoint-disabled',
+          glyphMarginHoverMessage: { value: 'Breakpoint' }
+        }
+      });
+    });
+
+    // Add current line decoration
+    if (currentDebugLine) {
+      decorations.push({
+        range: new monaco.Range(currentDebugLine, 1, currentDebugLine, 1),
+        options: {
+          isWholeLine: true,
+          className: 'debug-current-line',
+          glyphMarginClassName: 'debug-current-line-glyph'
+        }
+      });
+    }
+
+    decorationsRef.current = editor.deltaDecorations(decorationsRef.current, decorations);
+  }, [breakpoints, currentDebugLine]);
+
+  const handleStartDebug = () => {
+    if (!connectedDevice) {
+      setTerminalLogs(prev => [...prev, "\x1b[31m[Error] No device connected. Please connect a device via USB to start debugging.\x1b[0m"]);
+      return;
+    }
+    
+    setIsDebugging(true);
+    setTerminalLogs(prev => [...prev, "\x1b[34m[Debug] Starting debug session...\x1b[0m"]);
+    setTerminalLogs(prev => [...prev, "\x1b[34m[Debug] Initializing GDB server for ESP32...\x1b[0m"]);
+    
+    // Simulate initial state
+    setTimeout(() => {
+      setCurrentDebugLine(breakpoints.length > 0 ? breakpoints[0].line : 1);
+      setDebugVariables([
+        { name: 'ledState', value: 'LOW', type: 'int' },
+        { name: 'loopCount', value: '42', type: 'unsigned long' },
+        { name: 'temperature', value: '24.5', type: 'float' }
+      ]);
+      setDebugCallStack(['loop()', 'main()', '_start()']);
+      setTerminalLogs(prev => [...prev, "\x1b[32m[Debug] Debugger attached. Paused at entry.\x1b[0m"]);
+    }, 1500);
+  };
+
+  const handleStopDebug = () => {
+    setIsDebugging(false);
+    setCurrentDebugLine(null);
+    setDebugVariables([]);
+    setDebugCallStack([]);
+    setTerminalLogs(prev => [...prev, "\x1b[34m[Debug] Debug session ended.\x1b[0m"]);
+  };
+
+  const handleStepOver = () => {
+    if (currentDebugLine) {
+      setCurrentDebugLine(prev => (prev || 0) + 1);
+      // Simulate variable change
+      if (Math.random() > 0.7) {
+        setDebugVariables(prev => prev.map(v => v.name === 'loopCount' ? { ...v, value: (parseInt(v.value) + 1).toString() } : v));
+      }
+    }
+  };
   useEffect(() => {
     if (!navigator.usb) {
       console.warn('WebUSB is not supported in this browser or environment.');
@@ -134,7 +288,16 @@ void loop() {
           setCode(`${commentPrefix} AI RESPONSE: ${result.content}\n\n${code}`);
         }
       } else {
-        const generatedCode = await generateArduinoCode(`${aiPrompt} (Language: ${selectedLanguage})`);
+        const params: CodeGenerationParams = {
+          prompt: aiPrompt,
+          language: selectedLanguage,
+          optimizationLevel,
+          targetHardware,
+          targetBoardVariant,
+          libraries: selectedLibraries,
+          model: selectedModel
+        };
+        const generatedCode = await generateCode(params);
         setCode(generatedCode);
       }
       setAiPrompt('');
@@ -149,6 +312,7 @@ void loop() {
     if (isCompiling) return;
     setIsCompiling(true);
     setBuildProgress(0);
+    setBuildStatus('Initializing toolchain...');
     setIsTerminalOpen(true);
     setTerminalLogs(prev => [...prev, `\x1b[1;34m[BUILD]\x1b[0m Starting compilation for ${activeTab}...`]);
 
@@ -162,15 +326,20 @@ void loop() {
     ];
 
     for (let i = 0; i < steps.length; i++) {
+      setBuildStatus(steps[i]);
       await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
       setBuildProgress(((i + 1) / steps.length) * 100);
       setTerminalLogs(prev => [...prev, `\x1b[38;5;244m[BUILD]\x1b[0m ${steps[i]}`]);
     }
 
+    setBuildStatus('Compilation complete');
     setTerminalLogs(prev => [...prev, `\x1b[1;32m[SUCCESS]\x1b[0m Compilation complete. Binary size: 42.4 KB (12% of flash)`]);
     setIsCompiling(false);
     setBuildProgress(100);
-    setTimeout(() => setBuildProgress(0), 1000);
+    setTimeout(() => {
+      setBuildProgress(0);
+      setBuildStatus('');
+    }, 1500);
   };
 
   const handleUpload = async () => {
@@ -184,6 +353,7 @@ void loop() {
     
     setIsUploading(true);
     setBuildProgress(0);
+    setBuildStatus('Opening port...');
     setTerminalLogs(prev => [...prev, `\x1b[1;34m[UPLOAD]\x1b[0m Opening port ${connectedDevice.productName}...`]);
 
     const uploadSteps = [
@@ -197,15 +367,20 @@ void loop() {
     ];
 
     for (let i = 0; i < uploadSteps.length; i++) {
+      setBuildStatus(uploadSteps[i]);
       await new Promise(r => setTimeout(r, 400 + Math.random() * 300));
       setBuildProgress(((i + 1) / uploadSteps.length) * 100);
       setTerminalLogs(prev => [...prev, `\x1b[38;5;244m[UPLOAD]\x1b[0m ${uploadSteps[i]}`]);
     }
 
+    setBuildStatus('Upload successful');
     setTerminalLogs(prev => [...prev, `\x1b[1;32m[SUCCESS]\x1b[0m Upload successful. Board is rebooting...`]);
     setIsUploading(false);
     setBuildProgress(100);
-    setTimeout(() => setBuildProgress(0), 1000);
+    setTimeout(() => {
+      setBuildProgress(0);
+      setBuildStatus('');
+    }, 1500);
   };
 
   const handleDeploy = async () => {
@@ -245,38 +420,14 @@ void loop() {
     // The terminal component handles its own display, but we could pipe this back
   };
 
-  const handleEditorMount = (editor: any, monaco: any) => {
-    // Register AI Completion Provider
-    monaco.languages.registerCompletionItemProvider('cpp', {
-      provideCompletionItems: async (model: any, position: any) => {
-        const word = model.getWordUntilPosition(position);
-        const range = {
-          startLineNumber: position.lineNumber,
-          endLineNumber: position.lineNumber,
-          startColumn: word.startColumn,
-          endColumn: word.endColumn,
-        };
-
-        const prefix = word.word;
-        if (prefix.length < 2) return { suggestions: [] };
-
-        const aiSuggestions = await getAiCompletions(prefix);
-
-        const suggestions = aiSuggestions.map((item: any) => ({
-          label: item.label,
-          kind: monaco.languages.CompletionItemKind.Function,
-          documentation: item.detail,
-          insertText: item.insertText,
-          range: range,
-        }));
-
-        return { suggestions };
-      },
-    });
-  };
-
   return (
     <div className="flex flex-col h-screen bg-[#0a0a0a] text-[#cccccc] font-sans selection:bg-blue-500/30 tech-grid">
+      <BuildStatusOverlay 
+        isVisible={isCompiling || isUploading}
+        progress={buildProgress}
+        status={buildStatus}
+        type={isUploading ? 'upload' : 'compile'}
+      />
       {/* Top Navigation Bar */}
       <motion.header 
         initial={{ y: -50 }}
@@ -387,6 +538,38 @@ void loop() {
           </div>
       </motion.header>
 
+      {/* Debug Toolbar Overlay */}
+      <AnimatePresence>
+        {isDebugging && (
+          <motion.div 
+            initial={{ y: -100, x: '-50%' }}
+            animate={{ y: 20, x: '-50%' }}
+            exit={{ y: -100, x: '-50%' }}
+            className="fixed top-12 left-1/2 z-[100] bg-[#333333] border border-[#454545] rounded-md shadow-2xl flex items-center p-1 gap-1"
+          >
+            <button onClick={() => {}} className="p-2 hover:bg-[#454545] rounded text-[#75beff]" title="Continue (F5)">
+              <Play size={18} fill="currentColor" />
+            </button>
+            <button onClick={() => {}} className="p-2 hover:bg-[#454545] rounded text-[#75beff]" title="Pause (F6)">
+              <Pause size={18} fill="currentColor" />
+            </button>
+            <button onClick={handleStepOver} className="p-2 hover:bg-[#454545] rounded text-[#75beff]" title="Step Over (F10)">
+              <SkipForward size={18} />
+            </button>
+            <button onClick={() => {}} className="p-2 hover:bg-[#454545] rounded text-[#75beff]" title="Step Into (F11)">
+              <ArrowDown size={18} />
+            </button>
+            <button onClick={() => {}} className="p-2 hover:bg-[#454545] rounded text-[#75beff]" title="Step Out (Shift+F11)">
+              <ArrowUp size={18} />
+            </button>
+            <div className="w-px h-6 bg-[#454545] mx-1" />
+            <button onClick={handleStopDebug} className="p-2 hover:bg-[#454545] rounded text-[#f48771]" title="Stop (Shift+F5)">
+              <Square size={18} fill="currentColor" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex flex-1 overflow-hidden">
         {/* Activity Bar */}
         <motion.aside 
@@ -406,6 +589,34 @@ void loop() {
             className={cn("p-2 rounded transition-colors", (sidebarOpen && sidebarView === 'explorer') ? "text-white" : "text-[#858585] hover:text-white")}
           >
             <FolderOpen size={24} />
+          </button>
+          <button 
+            onClick={() => {
+              if (sidebarView === 'android' && sidebarOpen) {
+                setSidebarOpen(false);
+              } else {
+                setSidebarView('android');
+                setSidebarOpen(true);
+              }
+            }}
+            className={cn("p-2 rounded transition-colors", (sidebarOpen && sidebarView === 'android') ? "text-white" : "text-[#858585] hover:text-white")}
+            title="Android Emulator"
+          >
+            <Smartphone size={24} />
+          </button>
+          <button 
+            onClick={() => {
+              if (sidebarView === 'git' && sidebarOpen) {
+                setSidebarOpen(false);
+              } else {
+                setSidebarView('git');
+                setSidebarOpen(true);
+              }
+            }}
+            className={cn("p-2 rounded transition-colors", (sidebarOpen && sidebarView === 'git') ? "text-white" : "text-[#858585] hover:text-white")}
+            title="Source Control"
+          >
+            <GitBranch size={24} />
           </button>
           <button 
             onClick={() => {
@@ -490,6 +701,20 @@ void loop() {
           >
             <Activity size={24} />
           </button>
+          <button 
+            onClick={() => {
+              if (sidebarView === 'debug' && sidebarOpen) {
+                setSidebarOpen(false);
+              } else {
+                setSidebarView('debug');
+                setSidebarOpen(true);
+              }
+            }}
+            className={cn("p-2 rounded transition-colors", (sidebarOpen && sidebarView === 'debug') ? "text-white" : "text-[#858585] hover:text-white")}
+            title="Run and Debug"
+          >
+            <Bug size={24} />
+          </button>
           <button className="p-2 text-[#858585] hover:text-white transition-colors">
             <Search size={24} />
           </button>
@@ -535,6 +760,24 @@ void loop() {
                   </div>
                 </div>
               </>
+            ) : sidebarView === 'git' ? (
+              <GitPanel />
+            ) : sidebarView === 'debug' ? (
+              <DebuggerPanel 
+                isDebugging={isDebugging}
+                breakpoints={breakpoints}
+                variables={debugVariables}
+                callStack={debugCallStack}
+                onToggleBreakpoint={(id) => setBreakpoints(prev => prev.map(b => b.id === id ? { ...b, enabled: !b.enabled } : b))}
+                onRemoveBreakpoint={(id) => setBreakpoints(prev => prev.filter(b => b.id !== id))}
+                onStartDebug={handleStartDebug}
+                onStopDebug={handleStopDebug}
+                onStepOver={handleStepOver}
+                onStepInto={() => {}}
+                onStepOut={() => {}}
+                onResume={() => {}}
+                onPause={() => {}}
+              />
             ) : sidebarView === 'library' ? (
               <div className="flex flex-col h-full overflow-hidden">
                 <div className="p-3 text-[11px] uppercase tracking-widest font-bold text-[#858585] flex justify-between items-center">
@@ -551,6 +794,7 @@ void loop() {
                         setActiveTab(item.name);
                         if (item.category === 'Python') setSelectedLanguage('python');
                         else if (item.category === 'JavaScript') setSelectedLanguage('javascript');
+                        else if (item.category === 'Kotlin') setSelectedLanguage('kotlin');
                         else setSelectedLanguage('cpp');
                       }}
                       className="px-4 py-2 hover:bg-[#2a2d2e] cursor-pointer group"
@@ -582,6 +826,8 @@ void loop() {
                   ))}
                 </div>
               </div>
+            ) : sidebarView === 'android' ? (
+              <AndroidEmulator code={code} language={selectedLanguage} />
             ) : sidebarView === 'boards' ? (
               <BoardsManager connectedDevice={connectedDevice} onRequestDevice={requestUsbAccess} />
             ) : sidebarView === 'extensions' ? (
@@ -642,6 +888,7 @@ void loop() {
                   scrollBeyondLastLine: false,
                   readOnly: false,
                   automaticLayout: true,
+                  glyphMargin: true,
                   padding: { top: 10 }
                 }}
               />
@@ -673,6 +920,91 @@ void loop() {
                 </div>
               </div>
               <div className="p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <select 
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value)}
+                    className="bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="cpp">C++ (Arduino)</option>
+                    <option value="python">MicroPython</option>
+                    <option value="kotlin">Kotlin (Android)</option>
+                    <option value="javascript">JavaScript (Espruino)</option>
+                    <option value="rust">Rust (Embedded)</option>
+                  </select>
+                  <select 
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
+                    <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
+                    <option value="sonnet-4.6">Sonnet 4.6 (Claude)</option>
+                  </select>
+                  <button 
+                    onClick={() => setShowAdvancedAi(!showAdvancedAi)}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                  >
+                    {showAdvancedAi ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                    Advanced
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {showAdvancedAi && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="flex flex-col gap-2 overflow-hidden"
+                    >
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-[#858585] font-bold uppercase">Target Hardware</label>
+                        <input 
+                          type="text"
+                          value={targetHardware}
+                          onChange={(e) => setTargetHardware(e.target.value)}
+                          placeholder="e.g. ESP32, Arduino Uno"
+                          className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-[#858585] font-bold uppercase">Board Variant</label>
+                        <input 
+                          type="text"
+                          value={targetBoardVariant}
+                          onChange={(e) => setTargetBoardVariant(e.target.value)}
+                          placeholder="e.g. DevKitC, Nano, Pro Micro"
+                          className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-[#858585] font-bold uppercase">Optimization</label>
+                        <select 
+                          value={optimizationLevel}
+                          onChange={(e) => setOptimizationLevel(e.target.value as any)}
+                          className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="none">None</option>
+                          <option value="balanced">Balanced</option>
+                          <option value="size">Minimize Size</option>
+                          <option value="speed">Maximize Speed</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] text-[#858585] font-bold uppercase">Libraries (comma separated)</label>
+                        <input 
+                          type="text"
+                          value={selectedLibraries.join(', ')}
+                          onChange={(e) => setSelectedLibraries(e.target.value.split(',').map(s => s.trim()).filter(s => s))}
+                          placeholder="e.g. WiFi, HTTPClient"
+                          className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[10px] text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <textarea 
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}

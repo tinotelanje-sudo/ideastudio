@@ -6,11 +6,14 @@ import { queryOfflineAi, getOfflineCompletions } from "./server/offlineAi.js";
 import FtpDeploy from "ftp-deploy";
 import dotenv from "dotenv";
 import fs from "fs";
+import { simpleGit } from 'simple-git';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const git = simpleGit();
 
 async function startServer() {
   const app = express();
@@ -89,6 +92,93 @@ async function startServer() {
     }
     
     res.json({ output });
+  });
+
+  // Git API
+  app.get("/api/git/status", async (req, res) => {
+    try {
+      const isRepo = await git.checkIsRepo();
+      if (!isRepo) {
+        return res.json({ isRepo: false });
+      }
+      const status = await git.status();
+      const log = await git.log({ maxCount: 10 });
+      const remotes = await git.getRemotes(true);
+      res.json({ isRepo: true, status, log, remotes });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/git/init", async (req, res) => {
+    try {
+      await git.init();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/git/add", async (req, res) => {
+    const { files } = req.body;
+    try {
+      await git.add(files || ".");
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/git/commit", async (req, res) => {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: "Commit message is required" });
+    try {
+      const result = await git.commit(message);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/git/remote/add", async (req, res) => {
+    const { name, url } = req.body;
+    try {
+      await git.addRemote(name, url);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/git/push", async (req, res) => {
+    const { remote, branch, username, token } = req.body;
+    try {
+      let pushRemote = remote || 'origin';
+      if (username && token) {
+        const remotes = await git.getRemotes(true);
+        const targetRemote = remotes.find(r => r.name === pushRemote);
+        if (targetRemote) {
+          const url = new URL(targetRemote.refs.push);
+          url.username = username;
+          url.password = token;
+          pushRemote = url.toString();
+        }
+      }
+      const result = await git.push(pushRemote, branch || 'main');
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/git/pull", async (req, res) => {
+    const { remote, branch } = req.body;
+    try {
+      const result = await git.pull(remote || 'origin', branch || 'main');
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Vite middleware for development

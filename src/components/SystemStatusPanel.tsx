@@ -1,6 +1,6 @@
 import React from 'react';
 import { Activity, Cpu, Database, Globe, ShieldCheck, Zap } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 
 export const SystemStatusPanel = () => {
   const stats = [

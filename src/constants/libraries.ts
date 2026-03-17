@@ -232,6 +232,26 @@ void setup() {
 void loop() {
   // Tracking logic
 }`
+  },
+  {
+    id: 'kotlin-android-hello',
+    name: 'Android Hello World',
+    category: 'Kotlin',
+    description: 'Simple Android Activity in Kotlin.',
+    code: `package com.example.myapp
+
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import android.widget.TextView
+
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val textView = TextView(this)
+        textView.text = "Hello, Android from Kotlin!"
+        setContentView(textView)
+    }
+}`
   }
 ];
 

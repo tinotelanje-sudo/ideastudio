@@ -8,18 +8,34 @@ const getAI = () => {
   return new GoogleGenAI({ apiKey });
 };
 
-export const generateArduinoCode = async (prompt: string) => {
+export interface CodeGenerationParams {
+  prompt: string;
+  language: string;
+  optimizationLevel?: 'none' | 'balanced' | 'size' | 'speed';
+  targetHardware?: string;
+  targetBoardVariant?: string;
+  libraries?: string[];
+  model?: string;
+}
+
+export const generateCode = async (params: CodeGenerationParams) => {
   const ai = getAI();
-  const model = "gemini-3.1-pro-preview";
+  const modelName = params.model || "gemini-3.1-pro-preview";
   
-  const systemInstruction = `You are an expert Arduino developer. 
-  Generate high-quality, efficient C++ code for Arduino based on the user's request.
+  const systemInstruction = `You are an expert developer specializing in ${params.language === 'kotlin' ? 'Android and Kotlin' : 'embedded systems'}. 
+  Generate high-quality, efficient code based on the user's request.
+  Target Language: ${params.language}
+  Target Hardware: ${params.targetHardware || 'Generic'}
+  Board Variant: ${params.targetBoardVariant || 'Default'}
+  Optimization Level: ${params.optimizationLevel || 'balanced'}
+  Required Libraries: ${params.libraries?.join(', ') || 'None specified'}
+
   Return ONLY the code, no markdown formatting or explanations unless requested.
-  Ensure the code includes setup() and loop() functions.`;
+  Ensure the code is complete and ready to compile/run for the target platform.`;
 
   const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
+    model: modelName,
+    contents: params.prompt,
     config: {
       systemInstruction,
     },
