@@ -47,7 +47,14 @@ const seedKnowledge = [
   ['eeprom', 'EEPROM is memory whose values are kept when the board is powered off. It has a limited number of write cycles.', 'arduino'],
   ['ota', 'Over-the-Air (OTA) update is the process of loading firmware to a microcontroller using WiFi instead of a serial port.', 'esp32'],
   ['adc', 'Analog-to-Digital Converter (ADC) converts an analog voltage to a digital number. ESP32 has two 12-bit SAR ADCs.', 'hardware'],
-  ['dac', 'Digital-to-Analog Converter (DAC) converts a digital number to an analog voltage. ESP32 has two 8-bit DAC channels.', 'hardware']
+  ['dac', 'Digital-to-Analog Converter (DAC) converts a digital number to an analog voltage. ESP32 has two 8-bit DAC channels.', 'hardware'],
+  ['ble', 'Bluetooth Low Energy (BLE) is a wireless personal area network technology designed for low power consumption and cost.', 'communication'],
+  ['spiffs', 'SPI Flash File System (SPIFFS) is a lightweight file system for microcontrollers with an SPI flash chip. Note: LittleFS is now preferred.', 'filesystem'],
+  ['littlefs', 'LittleFS is a small, fail-safe filesystem designed for microcontrollers. It is more robust and faster than SPIFFS.', 'filesystem'],
+  ['hall sensor', 'ESP32 has a built-in Hall effect sensor that detects magnetic fields by measuring voltage changes in a conductor.', 'hardware'],
+  ['touch', 'ESP32 features capacitive touch sensors on up to 10 GPIO pins, allowing for touch-sensitive buttons without mechanical parts.', 'hardware'],
+  ['guru meditation', 'A Guru Meditation Error is a critical system crash on ESP32, often caused by illegal instructions or memory access violations.', 'error'],
+  ['panic', 'The Panic handler is triggered when the ESP32 encounters an unrecoverable error, usually resulting in a system reboot.', 'error']
 ];
 
 for (const [keyword, response, category] of seedKnowledge) {
@@ -66,9 +73,12 @@ const seedSnippets = [
   ['deepsleep', 'esp_sleep_enable_timer_wakeup(${1:TIME_IN_US});\nesp_deep_sleep_start();', 'cpp'],
   ['i2c', '#include <Wire.h>\n\nvoid setup() {\n  Wire.begin();\n}', 'cpp'],
   ['spi', '#include <SPI.h>\n\nvoid setup() {\n  SPI.begin();\n}', 'cpp'],
-  ['pwm', 'analogWrite(${1:pin}, ${2:value});', 'cpp'],
+  ['pwm', 'ledcSetup(${1:channel}, ${2:freq}, ${3:resolution});\nledcAttachPin(${4:pin}, ${1:channel});\nledcWrite(${1:channel}, ${5:duty});', 'cpp'],
   ['eeprom', '#include <EEPROM.h>\n\nvoid setup() {\n  EEPROM.begin(${1:512});\n}', 'cpp'],
-  ['ota', '#include <ArduinoOTA.h>\n\nvoid setup() {\n  ArduinoOTA.begin();\n}\n\nvoid loop() {\n  ArduinoOTA.handle();\n}', 'cpp']
+  ['ota', '#include <ArduinoOTA.h>\n\nvoid setup() {\n  ArduinoOTA.begin();\n}\n\nvoid loop() {\n  ArduinoOTA.handle();\n}', 'cpp'],
+  ['ble', '#include <BLEDevice.h>\n#include <BLEUtils.h>\n#include <BLEServer.h>\n\nvoid setup() {\n  BLEDevice::init("${1:MyESP32}");\n  BLEServer *pServer = BLEDevice::createServer();\n}', 'cpp'],
+  ['spiffs', '#include "SPIFFS.h"\n\nvoid setup() {\n  if(!SPIFFS.begin(true)) {\n    Serial.println("SPIFFS Mount Failed");\n  }\n}', 'cpp'],
+  ['touch', 'void setup() {\n  Serial.begin(115200);\n}\n\nvoid loop() {\n  Serial.println(touchRead(${1:T0}));\n  delay(1000);\n}', 'cpp']
 ];
 
 for (const [trigger, code, language] of seedSnippets) {
