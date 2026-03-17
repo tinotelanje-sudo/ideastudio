@@ -42,7 +42,7 @@ export const queryOfflineAi = (prompt: string) => {
   const lowerPrompt = prompt.toLowerCase();
   
   // Try to find a code snippet first
-  const snippet = db.prepare('SELECT code FROM code_snippets WHERE ? LIKE "%" || trigger || "%"').get(lowerPrompt) as { code: string } | undefined;
+  const snippet = db.prepare("SELECT code FROM code_snippets WHERE ? LIKE '%' || trigger || '%'").get(lowerPrompt) as { code: string } | undefined;
   if (snippet) {
     return {
       type: 'code',
@@ -51,7 +51,7 @@ export const queryOfflineAi = (prompt: string) => {
   }
 
   // Try to find general knowledge
-  const knowledge = db.prepare('SELECT response FROM knowledge WHERE ? LIKE "%" || keyword || "%"').get(lowerPrompt) as { response: string } | undefined;
+  const knowledge = db.prepare("SELECT response FROM knowledge WHERE ? LIKE '%' || keyword || '%'").get(lowerPrompt) as { response: string } | undefined;
   if (knowledge) {
     return {
       type: 'text',
@@ -69,8 +69,8 @@ export const getOfflineCompletions = (prefix: string) => {
   const lowerPrefix = prefix.toLowerCase();
   
   // Find matching keywords or triggers
-  const keywords = db.prepare('SELECT keyword as label, response as detail FROM knowledge WHERE keyword LIKE ? || "%" LIMIT 5').all(lowerPrefix) as { label: string, detail: string }[];
-  const snippets = db.prepare('SELECT trigger as label, code as detail FROM code_snippets WHERE trigger LIKE ? || "%" LIMIT 5').all(lowerPrefix) as { label: string, detail: string }[];
+  const keywords = db.prepare("SELECT keyword as label, response as detail FROM knowledge WHERE keyword LIKE ? || '%' LIMIT 5").all(lowerPrefix) as { label: string, detail: string }[];
+  const snippets = db.prepare("SELECT trigger as label, code as detail FROM code_snippets WHERE trigger LIKE ? || '%' LIMIT 5").all(lowerPrefix) as { label: string, detail: string }[];
   
   return [...keywords, ...snippets].map(item => ({
     label: item.label,
